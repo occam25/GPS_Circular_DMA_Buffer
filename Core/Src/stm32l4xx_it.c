@@ -23,7 +23,6 @@
 #include "stm32l4xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "DMA_CIRCULAR.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -60,6 +59,7 @@
 extern DMA_HandleTypeDef hdma_usart2_rx;
 extern DMA_HandleTypeDef hdma_usart2_tx;
 extern UART_HandleTypeDef huart2;
+extern DMA_Event_t dma_uart_rx;
 /* USER CODE BEGIN EV */
 /* USER CODE END EV */
 
@@ -189,6 +189,15 @@ void SysTick_Handler(void)
   HAL_IncTick();
   /* USER CODE BEGIN SysTick_IRQn 1 */
 
+  /* DMA timer */
+  if(dma_uart_rx.timer == 1)
+  {
+      /* DMA Timeout event: set Timeout Flag and call DMA Rx Complete Callback */
+      dma_uart_rx.flag = 1;
+      hdma_usart2_rx.XferCpltCallback(&hdma_usart2_rx);
+  }
+  if(dma_uart_rx.timer) { --dma_uart_rx.timer; }
+
   /* USER CODE END SysTick_IRQn 1 */
 }
 
@@ -205,11 +214,10 @@ void SysTick_Handler(void)
 void DMA1_Channel6_IRQHandler(void)
 {
   /* USER CODE BEGIN DMA1_Channel6_IRQn 0 */
-
   /* USER CODE END DMA1_Channel6_IRQn 0 */
   HAL_DMA_IRQHandler(&hdma_usart2_rx);
   /* USER CODE BEGIN DMA1_Channel6_IRQn 1 */
-	//DMA_IrqHandler(&huart2, &hdma_usart2_rx);
+//	DMA_IrqHandler(&huart2, &hdma_usart2_rx);
   /* USER CODE END DMA1_Channel6_IRQn 1 */
 }
 
@@ -235,13 +243,14 @@ void USART2_IRQHandler(void)
   /* USER CODE BEGIN USART2_IRQn 0 */
 
   /* USER CODE END USART2_IRQn 0 */
-  HAL_UART_IRQHandler(&huart2);
+//  HAL_UART_IRQHandler(&huart2);
   /* USER CODE BEGIN USART2_IRQn 1 */
-  if (__HAL_UART_GET_FLAG (&huart2, UART_FLAG_IDLE)){
-	  __HAL_UART_CLEAR_IDLEFLAG(&huart2);
-	  USART_IrqHandler(&huart2, &hdma_usart2_tx);
-//	  f_gps_pending_data = 1;
-  }
+    if((USART2->ISR & USART_ISR_IDLE) != RESET)
+    {
+        USART2->ICR = UART_CLEAR_IDLEF;
+        /* Start DMA timer */
+        dma_uart_rx.timer = DMA_TIMEOUT_MS;
+    }
   /* USER CODE END USART2_IRQn 1 */
 }
 

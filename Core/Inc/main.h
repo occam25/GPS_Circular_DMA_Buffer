@@ -49,6 +49,15 @@ extern volatile uint8_t f_gps_pending_data;
 
 /* Exported macro ------------------------------------------------------------*/
 /* USER CODE BEGIN EM */
+#define DMA_BUF_SIZE        64      /* DMA circular buffer size in bytes */
+#define DMA_TIMEOUT_MS      10      /* DMA Timeout duration in msec */
+
+typedef struct
+{
+    volatile uint8_t  flag;     /* Timeout event flag */
+    uint16_t timer;             /* Timeout duration in msec */
+    uint16_t prevCNDTR;         /* Holds previous value of DMA_CNDTR */
+} DMA_Event_t;
 
 /* USER CODE END EM */
 

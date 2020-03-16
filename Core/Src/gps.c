@@ -56,9 +56,11 @@ GPS_STATUS GPS_process_data(void)
 		}
 	}
 
-	// begin character not processed (no end character foud yet) -> update index and move data
+	// begin character not processed (no end character found yet) -> update index and move data
 	if(begin != NULL){ // && end == NULL){
 		index += nbytes - (begin - processing_buffer);
+		if(index > sizeof(processing_buffer) - 1)
+			index = 0;
 		if(begin != processing_buffer){
 			for(i = 0; i < index; i++){
 				processing_buffer[i] = *(begin + i);

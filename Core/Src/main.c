@@ -25,7 +25,6 @@
 /* USER CODE BEGIN Includes */
 #include <string.h>
 #include "gps.h"
-#include "DMA_CIRCULAR.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -49,6 +48,13 @@ DMA_HandleTypeDef hdma_usart2_tx;
 
 /* USER CODE BEGIN PV */
 volatile uint8_t f_gps_pending_data;
+/* DMA Timeout event structure
+ * Note: prevCNDTR initial value must be set to maximum size of DMA buffer!
+*/
+DMA_Event_t dma_uart_rx = {0,0,DMA_BUF_SIZE};
+
+uint8_t dma_rx_buf[DMA_BUF_SIZE];       /* Circular buffer for DMA */
+uint8_t data[DMA_BUF_SIZE] = {'\0'};    /* Data buffer that contains newly received data */
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -62,17 +68,48 @@ static void MX_USART2_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-	if(huart->Instance == USART2){
-		size_t len = DMA_RX_BUFFER_SIZE - hdma_usart2_rx.Instance->CNDTR;
-		len = DMA_RX_BUFFER_SIZE - __HAL_DMA_GET_COUNTER(&hdma_usart2_rx);
-		//HAL_UART_Transmit(huart, DMA_RX_Buffer, DMA_RX_BUFFER_SIZE, 100);
-		GPS_store_data(DMA_RX_Buffer, 168);
-		memset(DMA_RX_Buffer, '\0', sizeof(DMA_RX_Buffer));
-		f_gps_pending_data = 1;
-	}
+    uint16_t i, pos, start, length;
+    uint16_t currCNDTR = __HAL_DMA_GET_COUNTER(huart->hdmarx);
+
+    /* Ignore IDLE Timeout when the received characters exactly filled up the DMA buffer and DMA Rx Complete IT is generated, but there is no new character during timeout */
+    if(dma_uart_rx.flag && currCNDTR == DMA_BUF_SIZE)
+    {
+        dma_uart_rx.flag = 0;
+        return;
+    }
+
+    /* Determine start position in DMA buffer based on previous CNDTR value */
+    start = (dma_uart_rx.prevCNDTR < DMA_BUF_SIZE) ? (DMA_BUF_SIZE - dma_uart_rx.prevCNDTR) : 0;
+
+    if(dma_uart_rx.flag)    /* Timeout event */
+    {
+        /* Determine new data length based on previous DMA_CNDTR value:
+         *  If previous CNDTR is less than DMA buffer size: there is old data in DMA buffer (from previous timeout) that has to be ignored.
+         *  If CNDTR == DMA buffer size: entire buffer content is new and has to be processed.
+        */
+        length = (dma_uart_rx.prevCNDTR < DMA_BUF_SIZE) ? (dma_uart_rx.prevCNDTR - currCNDTR) : (DMA_BUF_SIZE - currCNDTR);
+        dma_uart_rx.prevCNDTR = currCNDTR;
+        dma_uart_rx.flag = 0;
+    }
+    else                /* DMA Rx Complete event */
+    {
+        length = DMA_BUF_SIZE - start;
+        dma_uart_rx.prevCNDTR = DMA_BUF_SIZE;
+    }
+
+    /* Copy and Process new data */
+    for(i=0,pos=start; i<length; ++i,++pos)
+    {
+        data[i] = dma_rx_buf[pos];
+    }
+
+    /* Send received data over USB */
+    HAL_UART_Transmit(huart, data, length, 100);
 }
+
 /* USER CODE END 0 */
 
 /**
@@ -106,27 +143,15 @@ int main(void)
   MX_DMA_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-  // CONFIGURE DMA
-//  if(HAL_OK != HAL_DMA_RegisterCallback(&hdma_usart2_rx, HAL_DMA_XFER_CPLT_CB_ID, DMA_IrqHandler)){
-//		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
-//		return 1;
-//  }
-
-
-  __HAL_UART_ENABLE_IT(&huart2, UART_IT_IDLE);   		// enable idle line interrupt
-  __HAL_DMA_ENABLE_IT (&hdma_usart2_rx, DMA_IT_TC); 	// enable DMA Tx cplt interrupt
-
-  hdma_usart2_rx.Instance->CCR &= ~DMA_CCR_HTIE; 		// disable uart half interrupt
-
-  if(HAL_OK != HAL_UART_Receive_DMA(&huart2, DMA_RX_Buffer, 168)){
-	  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
-	  return 1;
+  /* Start DMA */
+  if(HAL_UART_Receive_DMA(&huart2, (uint8_t*)dma_rx_buf, DMA_BUF_SIZE) != HAL_OK)
+  {
+      Error_Handler();
   }
 
+  /* Disable Half Transfer Interrupt */
+  __HAL_DMA_DISABLE_IT(huart2.hdmarx, DMA_IT_HT);
 
-
-
-//  LL_USART_TransmitData8(USART2)
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -136,7 +161,16 @@ int main(void)
   {
 	  if(f_gps_pending_data){
 		  f_gps_pending_data = 0;
-		  GPS_process_data();
+//		  volatile size_t len = DMA_RX_BUFFER_SIZE - hdma_usart2_rx.Instance->CNDTR;
+//		  if(len){
+//			GPS_store_data(DMA_RX_Buffer, len);
+//			//			memset(DMA_RX_Buffer, '\0', sizeof(DMA_RX_Buffer));
+////			HAL_UART_DMAStop(&huart2);
+//		  }
+//		  GPS_process_data();
+//		  if(HAL_OK != HAL_UART_Receive_DMA(&huart2, DMA_RX_Buffer, DMA_RX_BUFFER_SIZE)){
+//			  Error_Handler();
+//		  }
 	  }
     /* USER CODE END WHILE */
 
@@ -228,7 +262,10 @@ static void MX_USART2_UART_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN USART2_Init 2 */
-
+  /* UART2 IDLE Interrupt Configuration */
+  SET_BIT(USART2->CR1, USART_CR1_IDLEIE);
+  HAL_NVIC_SetPriority(USART2_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(USART2_IRQn);
   /* USER CODE END USART2_Init 2 */
 
 }
@@ -297,7 +334,7 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
-
+	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
   /* USER CODE END Error_Handler_Debug */
 }
 
