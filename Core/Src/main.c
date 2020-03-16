@@ -107,7 +107,9 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
     }
 
     /* Send received data over USB */
-    HAL_UART_Transmit(huart, data, length, 100);
+    //HAL_UART_Transmit(huart, data, length, 100);
+    GPS_store_data(data, length);
+    f_gps_pending_data = 1;
 }
 
 /* USER CODE END 0 */
@@ -161,16 +163,7 @@ int main(void)
   {
 	  if(f_gps_pending_data){
 		  f_gps_pending_data = 0;
-//		  volatile size_t len = DMA_RX_BUFFER_SIZE - hdma_usart2_rx.Instance->CNDTR;
-//		  if(len){
-//			GPS_store_data(DMA_RX_Buffer, len);
-//			//			memset(DMA_RX_Buffer, '\0', sizeof(DMA_RX_Buffer));
-////			HAL_UART_DMAStop(&huart2);
-//		  }
-//		  GPS_process_data();
-//		  if(HAL_OK != HAL_UART_Receive_DMA(&huart2, DMA_RX_Buffer, DMA_RX_BUFFER_SIZE)){
-//			  Error_Handler();
-//		  }
+		  GPS_process_data();
 	  }
     /* USER CODE END WHILE */
 

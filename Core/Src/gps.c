@@ -46,8 +46,8 @@ GPS_STATUS GPS_process_data(void)
 	for(i = index; i < nbytes + index; i++){
 		if(processing_buffer[i] == '$'){
 			begin = processing_buffer + i;
-		//}else if((begin != NULL)&&(processing_buffer[i] == '\n' || processing_buffer[i] == '\r')){
-		}else if((begin != NULL)&&(processing_buffer[i] == '#')){
+		}else if((begin != NULL)&&(processing_buffer[i] == '\n' || processing_buffer[i] == '\r')){
+		//}else if((begin != NULL)&&(processing_buffer[i] == '#')){
 			end = processing_buffer + i;
 			// process data
 			process_data(begin, end - begin);
